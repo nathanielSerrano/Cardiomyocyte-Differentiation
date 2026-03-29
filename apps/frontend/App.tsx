@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 
 // --- MOCK DATA ---
-// In the real app, this will come from your Python FastAPI backend
+// In the real app, this will come from the Python FastAPI backend
 const mockRecentBatch = {
   id: "Batch #42",
   cellLine: "hiPSC-CM Line A",
@@ -46,7 +46,7 @@ export default function App() {
         {/* TouchableOpacity is the React Native equivalent of a <button> */}
         <TouchableOpacity 
           style={styles.uploadButton}
-          onPress={() => alert("This will trigger the S3 pre-signed URL upload flow!")}
+          onPress={() => alert("(This will trigger the S3 pre-signed URL upload flow)")}
         >
           <Text style={styles.uploadButtonText}>+ Upload Day 7 Images</Text>
         </TouchableOpacity>

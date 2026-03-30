@@ -71,4 +71,4 @@ Start the Expo development server:
   * silas.qualls@maine.edu
 
 ---
-*Dataset provided by the Allen Institute for Cell Science.*
+*Dataset provided by the [Allen Institute for Cell Science](https://open.quiltdata.com/b/allencell/tree/aics/integrated_transcriptomics_structural_organization_hipsc_cm/).*

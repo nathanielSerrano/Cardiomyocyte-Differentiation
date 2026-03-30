@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.database import engine
+from models import domain
+from api.routes import router as prediction_router
+
+# Create DB tables based on SQLAlchemy models
+domain.Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
     title="CardioPredict API",
     description="Backend for the hiPSC-CM morphology prediction mobile app",
@@ -15,9 +22,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Route Registration
+app.include_router(prediction_router, prefix="/api/v1", tags=["Predictions"])
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "message": "CardioPredict API is online."}
-
-# We will eventually include the router from api/routes.py here:
-# app.include_router(api_router, prefix="/api/v1")

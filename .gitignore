@@ -1,2 +1,4 @@
 apps/backend/venv/
 __pycache__/
+.env
+*.db

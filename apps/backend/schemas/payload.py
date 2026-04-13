@@ -14,10 +14,15 @@ class PredictionCreate(BaseModel):
     When the mobile app sends a prediction request, it must provide this exact JSON structure.
     If it misses a field, the FastAPI will automatically throw a 422 Validation Error.
     """
+    project_id: str
     batch_id: str
     cell_line: str
-    original_image_url: str
+    original_image_s3_key: str
 
+class LoginCreate(BaseModel):
+    user: str
+    password: str
+    created_at: datetime
 # ------------------------------------------
 # Outgoing Data
 # ------------------------------------------
@@ -28,8 +33,8 @@ class PredictionResponse(BaseModel):
     id: int
     batch_id: str
     cell_line: str
-    original_image_url: str
-    heatmap_image_url: Optional[str]
+    original_image_s3_key: str
+    heatmap_image_s3_key: Optional[str]
     outcome: str
     confidence: float
     created_at: datetime

@@ -2,3 +2,6 @@ apps/backend/venv/
 __pycache__/
 .env
 *.db
+allen_cell_data/
+.DS_Store
+*.pth

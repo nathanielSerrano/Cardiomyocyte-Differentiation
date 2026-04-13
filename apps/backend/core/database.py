@@ -10,7 +10,7 @@ from sqlalchemy.ext.declarative import declarative_base
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv('../config/.env')
 
 # Default to local SQLite DB if DATABASE_URL is not set in .env
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///./cardio_local.db")

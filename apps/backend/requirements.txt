@@ -4,3 +4,8 @@ sqlalchemy
 pydantic
 python-dotenv
 boto3
+awscli
+passlib
+quilt3
+pandas
+tifffile

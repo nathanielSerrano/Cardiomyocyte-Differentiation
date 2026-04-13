@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.database import engine
 from models import domain
 from api.routes import router as prediction_router
+from api.login_routes import router as login_router
 
 # Create DB tables based on SQLAlchemy models
 domain.Base.metadata.create_all(bind=engine)
@@ -24,6 +25,7 @@ app.add_middleware(
 
 # Route Registration
 app.include_router(prediction_router, prefix="/api/v1", tags=["Predictions"])
+app.include_router(login_router, prefix="/api/v1", tags=["Login"])
 
 @app.get("/health")
 async def health_check():

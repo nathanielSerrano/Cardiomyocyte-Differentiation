@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -10,28 +10,62 @@ import {
   StatusBar 
 } from 'react-native';
 
-// --- MOCK DATA ---
-// In the real app, this will come from the Python FastAPI backend
+import LoginScreen from './screens/loginscreen';
+import UploadScreen from './screens/uploadscreen';
+
+// --- MOCK DATA (keep for now) ---
 const mockRecentBatch = {
   id: "Batch #42",
   cellLine: "hiPSC-CM Line A",
   status: "Analysis Complete",
   prediction: "Success",
   confidence: 94.5,
-  // Using a placeholder science image to represent the XAI heatmap from S3
   heatmapUrl: "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?auto=format&fit=crop&w=500&q=60", 
   date: "Today, 10:42 AM"
 };
 
+// ----------------------
+// MAIN APP
+// ----------------------
 export default function App() {
+  const [token, setToken] = useState<string | null>(null);
+  const [screen, setScreen] = useState<"home" | "upload">("home");
+
+  // 🔐 Not logged in → show login
+  if (!token) {
+    return <LoginScreen onLogin={setToken} />;
+  }
+
+  // 📤 Upload screen
+  if (screen === "upload") {
+    return (
+      <UploadScreen 
+        token={token} 
+        onBack={() => setScreen("home")} 
+      />
+    );
+  }
+
+  // 🏠 Home screen
   return (
-    // SafeAreaView ensures your UI doesn't hide under the iPhone notch or Android status bar
+    <HomeScreen 
+      token={token} 
+      onUpload={() => setScreen("upload")} 
+    />
+  );
+}
+
+// ----------------------
+// HOME SCREEN (your UI)
+// ----------------------
+function HomeScreen({ token, onUpload }: { token: string; onUpload: () => void }) {
+  return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* --- HEADER SECTION --- */}
+        {/* HEADER */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Hello, Dr. Smith</Text>
@@ -42,16 +76,15 @@ export default function App() {
           </View>
         </View>
 
-        {/* --- ACTION SECTION --- */}
-        {/* TouchableOpacity is the React Native equivalent of a <button> */}
+        {/* UPLOAD BUTTON */}
         <TouchableOpacity 
           style={styles.uploadButton}
-          onPress={() => alert("(This will trigger the S3 pre-signed URL upload flow)")}
+          onPress={onUpload}
         >
           <Text style={styles.uploadButtonText}>+ Upload Day 7 Images</Text>
         </TouchableOpacity>
 
-        {/* --- RECENT RESULTS SECTION --- */}
+        {/* RECENT RESULTS */}
         <Text style={styles.sectionTitle}>Recent Analyses</Text>
 
         <View style={styles.card}>
@@ -62,13 +95,12 @@ export default function App() {
 
           <Text style={styles.cellLineText}>{mockRecentBatch.cellLine}</Text>
 
-          {/* Image component replaces the standard HTML <img> tag */}
           <View style={styles.imageContainer}>
             <Image 
               source={{ uri: mockRecentBatch.heatmapUrl }} 
               style={styles.heatmapImage}
             />
-            {/* Overlay badge for the prediction result */}
+
             <View style={styles.badgeContainer}>
               <Text style={styles.badgeText}>
                 {mockRecentBatch.prediction} ({mockRecentBatch.confidence}%)
@@ -76,7 +108,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* Export to ELN Button */}
           <TouchableOpacity 
             style={styles.secondaryButton}
             onPress={() => alert("Exporting to Electronic Lab Notebook...")}
@@ -90,12 +121,13 @@ export default function App() {
   );
 }
 
-// --- STYLESHEET ---
-// This acts as your CSS. Notice the camelCase properties and flexbox layout.
+// ----------------------
+// STYLES (unchanged)
+// ----------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6', // Light gray background
+    backgroundColor: '#F3F4F6',
   },
   scrollContent: {
     padding: 20,
@@ -131,7 +163,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   uploadButton: {
-    backgroundColor: '#2563EB', // Primary Blue
+    backgroundColor: '#2563EB',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -140,7 +172,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 5, // For Android shadow
+    elevation: 5,
   },
   uploadButtonText: {
     color: 'white',
@@ -192,13 +224,13 @@ const styles = StyleSheet.create({
   heatmapImage: {
     width: '100%',
     height: 200,
-    backgroundColor: '#E5E7EB', // Placeholder color before load
+    backgroundColor: '#E5E7EB',
   },
   badgeContainer: {
     position: 'absolute',
     bottom: 12,
     right: 12,
-    backgroundColor: 'rgba(16, 185, 129, 0.9)', // Emerald green with opacity
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,

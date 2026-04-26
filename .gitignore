@@ -5,3 +5,4 @@ __pycache__/
 allen_cell_data/
 .DS_Store
 *.pth
+test_outputs/

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, SafeAreaView, StatusBar, ScrollView } from "react-native";
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, StatusBar, ScrollView } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { register } from "../services/api";
 
 export default function RegisterScreen({ onBack }) {
@@ -20,7 +21,7 @@ export default function RegisterScreen({ onBack }) {
       setError("");
       
       // Note: Backend /register expects item: LoginCreate and project_name query param
-      await register(user, password, projectName);
+      await register(user, password,  projectName);
       
       alert("Account created successfully! Please log in.");
       onBack();
@@ -40,7 +41,7 @@ export default function RegisterScreen({ onBack }) {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Text style={styles.title}>Join CardioPredict</Text>
+          <Text style={styles.title}>Join MyoScope</Text>
           <Text style={styles.subtitle}>Start analyzing your cell lines</Text>
         </View>
 

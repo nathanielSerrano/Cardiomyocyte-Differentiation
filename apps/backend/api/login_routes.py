@@ -10,7 +10,7 @@ from jose import jwt, JWTError
 
 from core.database import get_db
 from models.domain import LoginRecord, Project
-from schemas.payload import LoginCreate
+from schemas.payload import UserLogin, UserRegister
 from dotenv import load_dotenv
 
 current_dir = Path(__file__).resolve().parent
@@ -82,7 +82,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 # --- ROUTES ---
 
 @router.post('/register', status_code=201)
-def register_user(item: LoginCreate, project_name: str, db: Session = Depends(get_db)):
+def register_user(item: UserRegister, project_name: str, db: Session = Depends(get_db)):
     """
     Registers a user and assigns them to a project.
     If the project doesn't exist, it creates it.
@@ -112,7 +112,7 @@ def register_user(item: LoginCreate, project_name: str, db: Session = Depends(ge
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post('/login')
-def login(item: LoginCreate, db: Session = Depends(get_db)):
+def login(item: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user and return a JWT."""
     user = db.query(LoginRecord).filter(LoginRecord.user == item.user).first()
     

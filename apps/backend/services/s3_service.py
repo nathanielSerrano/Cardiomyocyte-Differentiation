@@ -4,12 +4,17 @@ It uses the `boto3` library to interface with AWS S3 and includes error handling
 """
 import boto3
 from botocore.exceptions import ClientError
+from botocore.config import Config  # <-- 1. Import this!
 import logging
 
 class S3Service:
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
-        self.s3_client = boto3.client('s3')
+        self.s3_client = boto3.client(
+            's3',
+            region_name="us-east-2", # Ensure your region is correct
+            config=Config(signature_version='s3v4')           # <-- THE MAGIC FIX
+        )
     
     def upload_file(self, file_path, s3_key):
         """

@@ -11,7 +11,7 @@ import torch.nn as nn
 import tifffile as tiff
 import numpy as np
 from torchvision import models, transforms
-
+import cv2
 
 from core.database import get_db
 from models.domain import PredictionRecord, LoginRecord, user_project_association
@@ -75,7 +75,7 @@ inference_transforms = transforms.Compose([
 device = torch.device("cpu")
 model = models.resnet18()
 model.fc = nn.Sequential(nn.Linear(model.fc.in_features, 1), nn.Sigmoid())
-model.load_state_dict(torch.load('../../best_cardiomyocyte_resnet18.pth', map_location=device))
+model.load_state_dict(torch.load('../../best_cardiomyocyte_resnet18(not perfect recall).pth', map_location=device))
 model.eval() 
 
 # Initialize our new GradCAM wrapper
@@ -93,14 +93,21 @@ def run_prediction_with_xai(image_path: str, temp_heatmap_path: str, temp_raw_jp
     """
     image_array = tiff.imread(image_path)
     
-    # Extract alpha-actinin-2 (Channel 1) and duplicate to RGB
+    # 1. Extract Channel 1 and Mathematically Normalize to [0.0, 1.0]
     single_channel = image_array[1].astype(np.float32)
+    min_val = np.min(single_channel)
+    max_val = np.max(single_channel)
+    
+    # Prevent divide-by-zero on completely black images
+    if max_val > min_val:
+        single_channel = (single_channel - min_val) / (max_val - min_val)
+        
     rgb_image = np.stack((single_channel,) * 3, axis=-1)
     
-    # 1. Convert to Tensor FIRST [Channels, Height, Width]
+    # 2. Convert to Tensor FIRST [Channels, Height, Width]
     image_tensor = torch.tensor(rgb_image).permute(2, 0, 1)
     
-    # 2. ASPECT RATIO PRESERVING RESIZE (Matches Training!)
+    # 3. ASPECT RATIO PRESERVING RESIZE
     _, h, w = image_tensor.shape
     max_dim = max(h, w)
     scale = 224.0 / max_dim
@@ -116,21 +123,22 @@ def run_prediction_with_xai(image_path: str, temp_heatmap_path: str, temp_raw_jp
     
     padded_tensor = F.pad(image_tensor, (pad_left, pad_right, pad_top, pad_bottom), value=0)
     
-    # 3. Save a NumPy copy of the padded square specifically for PERFECT heatmap alignment
-    padded_rgb_image = padded_tensor.permute(1, 2, 0).numpy()
+    # 4. Save a standard uint8 [0-255] NumPy copy for OpenCV to perfectly draw the heatmap
+    padded_rgb_image = (padded_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
     
-    # 4. Normalize the tensor for the ResNet model
+    # 5. Normalize the tensor for the ResNet model
     normalized_tensor = TF.normalize(padded_tensor, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     
     input_batch = normalized_tensor.unsqueeze(0).to(device)
     
-    # 5. Run the image through our GradCAM extractor
+    # 6. Run the image through our GradCAM extractor
     cam_array, z_disk_probability = cam_extractor(input_batch)
     
-    # 6. Generate and save the heatmap overlaying the CAM onto the PADDED image
+    # 7. Generate and save the heatmap
     generate_and_save_visuals(cam_array, padded_rgb_image, temp_heatmap_path, temp_raw_jpg_path)
     
     return z_disk_probability
+
 
 
 # --- THE UPDATED ROUTER ---
@@ -250,9 +258,20 @@ def get_recent_predictions(current_user: LoginRecord = Depends(get_current_user)
     """
     Retrieves the most recent predictions from the DB to populate the dashboard.
     """
-    records = db.query(PredictionRecord).filter(PredictionRecord.project_id == current_user.project_id
+    records = db.query(PredictionRecord).filter(PredictionRecord.project_id == current_user.projects[0].id
                                                 ).order_by(PredictionRecord.created_at.desc()).limit(limit).all()
     return records
+
+@router.get("/user-info")
+def get_user_info(current_user: LoginRecord = Depends(get_current_user)):
+    """
+    A simple route to return the logged-in user's information and their associated projects.
+    Useful for debugging and ensuring our authentication system is working correctly.
+    """
+    return {
+        "user": current_user.user,
+        "projects": [{"id": p.id, "name": p.name} for p in current_user.projects]
+    }
 
 
 @router.get("/upload-url", response_model=dict)

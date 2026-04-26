@@ -1,25 +1,35 @@
 import { useState } from "react";
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, SafeAreaView, StatusBar } from "react-native";
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, StatusBar } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { login } from "../services/api";
 
 export default function LoginScreen({ onLogin, onGoToRegister }) {
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (!user || !password) {
+      setError("Please enter both credentials.");
+      return;
+    }
+
     try {
       setError("");
+      setLoading(true);
 
       const res = await login(user, password);
 
       if (res.access_token) {
-        onLogin(res.access_token); // send token to parent
+        onLogin(res.access_token);
       } else {
-        setError("Invalid login response");
+        setError("Invalid credentials or server response.");
       }
-    } catch (err) {
-      setError("Login failed");
+    } catch (err: any) {
+      setError(err.message || "Unable to connect to research server.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -28,7 +38,7 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
       <StatusBar barStyle="dark-content" />
       <View style={styles.inner}>
         <View style={styles.header}>
-          <Text style={styles.title}>CardioPredict</Text>
+          <Text style={styles.title}>MyoScope</Text>
           <Text style={styles.subtitle}>Morphology Analysis Portal</Text>
         </View>
 
@@ -67,6 +77,10 @@ export default function LoginScreen({ onLogin, onGoToRegister }) {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F8FAFC', // Slate 50
+  },
   container: {
     flex: 1,
     backgroundColor: '#F3F4F6',

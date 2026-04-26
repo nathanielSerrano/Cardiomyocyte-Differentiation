@@ -19,10 +19,14 @@ class PredictionCreate(BaseModel):
     cell_line: str
     original_image_s3_key: str
 
-class LoginCreate(BaseModel):
+class UserRegister(BaseModel):
     user: str
     password: str
-    created_at: datetime
+    created_at: datetime # Required when creating an account
+
+class UserLogin(BaseModel):
+    user: str
+    password: str # Only need these two to log in!
 # ------------------------------------------
 # Outgoing Data
 # ------------------------------------------
@@ -31,6 +35,7 @@ class PredictionResponse(BaseModel):
     The JSON structure the mobile app will receive after the ML model finishes its prediction.
     """
     id: int
+    project_id: int
     batch_id: str
     cell_line: str
     original_image_s3_key: str

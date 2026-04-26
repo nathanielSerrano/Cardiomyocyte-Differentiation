@@ -1,6 +1,6 @@
-# CardioPredict: hiPSC-CM Morphology Analysis
+# MyoScope: hiPSC-CM Morphology Analysis
 
-CardioPredict is a mobile application and backend service designed to predict the developmental success of hiPSC-derived cardiomyocytes from Day 7 microscopic images. This project was done as part of the Software Engineering course at the University of Southern Maine (Spring 2026).
+MyoScope is a mobile application and backend service designed to predict the developmental success of hiPSC-derived cardiomyocytes from Day 7 microscopic images. This project was done as part of the Software Engineering course at the University of Southern Maine (Spring 2026).
 
 Rather than relying on manual, highly subjective visual inspections or legacy bioinformatics pipelines, this system utilizes a fine-tuned ResNet-18 Convolutional Neural Network (CNN) exposed via a modern, layered REST API to provide researchers with rapid, explainable predictions directly on their mobile devices.
 
@@ -10,17 +10,18 @@ This project emphasizes clean software engineering principles, specifically util
 
 ### Tech Stack
 
-* **Frontend (Mobile):** React Native, TypeScript, Expo
+* **Frontend (Mobile):** React Native, TypeScript, Expo, React Native Blob Util (Binary Streaming)
 * **Backend (API):** Python, FastAPI, Pydantic (Data Validation)
 * **Machine Learning:** PyTorch (ResNet-18 Transfer Learning), Captum (XAI Heatmaps)
-* **Database & Storage:** MySQL (Relational Data), AWS S3 (Blob Storage)
+* **Database & Storage:** PostgreSQL (Relational Data), AWS S3 (Blob Storage)
 
 ## Key Features
 
-* **Direct-to-Cloud Uploads:** Implements the AWS S3 Pre-signed URL pattern to allow mobile clients to upload massive `.tiff` microscopy files directly to cloud storage, bypassing the API to prevent server bottlenecks.
+* **Direct-to-Cloud Binary Streaming:** Implements the AWS S3 Pre-signed URL pattern utilizing `react-native-blob-util` to stream raw `.tiff` microscopy bytes directly to cloud storage. This bypasses the standard React Native bridge, preventing multipart header corruption and eliminating server bottlenecks.
+* **Lab Project Management:** Includes full collaborative support, allowing researchers to dynamically create, join, and manage distinct lab groups and organize their inference runs by project.
 * **"Black Box" ML Integration:** The PyTorch inference logic is strictly isolated in the Service Layer, allowing the REST API to treat the complex predictive model as a simple, highly testable function call.
 * **Explainable AI (XAI):** Generates and returns visual gradient heatmaps overlaid on the original microscopy images, allowing researchers to see exactly which cellular structures influenced the success/failure prediction.
-* **ELN Export Ready:** Predictions and heatmaps are formatted to be easily exported to standard Electronic Lab Notebooks (ELNs).
+* **Native ELN Export:** Predictions and heatmaps are automatically formatted into professional PDF lab reports on-device, ready to be exported to any Electronic Lab Notebook (ELN) via native iOS/Android sharing.
 
 ## Repository Structure (Backend)
 
@@ -28,7 +29,7 @@ The backend follows a Controller-Service-Repository pattern:
 
     ├── api/             # Presentation Layer: FastAPI routing and HTTP status codes
     ├── core/            # Database configurations and external client setups
-    ├── models/          # Data Access Layer: SQLAlchemy ORM models (MySQL)
+    ├── models/          # Data Access Layer: SQLAlchemy ORM models (PostgreSQL)
     ├── schemas/         # Data Transfer Objects: Pydantic models for JSON validation
     ├── services/        # Business Logic: S3 interactions and PyTorch inference
     └── main.py          # Application entry point
@@ -55,11 +56,13 @@ Navigate to the `frontend` directory and install the Node dependencies:
 
     npm install
 
-Start the Expo development server:
+*Note: Because this project utilizes native code (e.g., `react-native-blob-util`, Safe Area insets), it cannot be run in the standard Expo Go app.* You must compile a custom development build using Android Studio or Xcode:
 
-    npx expo start
+    # For Android Emulators / Connected Devices
+    npx expo run:android
 
-*Scan the generated QR code with the Expo Go app on your physical iOS/Android device to view the app.*
+    # For iOS Simulators / Connected Devices (Mac only)
+    npx expo run:ios
 
 ## Authors
 

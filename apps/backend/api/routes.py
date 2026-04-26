@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from pathlib import Path
+import tempfile
 import random
 import os
 import uuid
@@ -17,12 +19,14 @@ from schemas.payload import PredictionCreate, PredictionResponse
 from services.s3_service import S3Service
 from api.login_routes import get_current_user
 from dotenv import load_dotenv
-from api.ml_utils import ResNetGradCAM, generate_and_save_heatmap
+from api.ml_utils import ResNetGradCAM, generate_and_save_visuals
 
 
 router = APIRouter()
 
-load_dotenv('../config/.env')
+current_dir = Path(__file__).resolve().parent
+env_path = current_dir.parent / 'config' / '.env'
+load_dotenv(dotenv_path=env_path)
 
 BUCKET_NAME = os.getenv("AWS_BUCKET_NAME", "cardio-app-images-2026")
 
@@ -83,7 +87,7 @@ import torchvision.transforms.functional as TF
 import numpy as np
 import tifffile as tiff
 
-def run_prediction_with_xai(image_path: str, temp_heatmap_path: str):
+def run_prediction_with_xai(image_path: str, temp_heatmap_path: str, temp_raw_jpg_path: str):
     """
     Runs inference, generates the XAI heatmap, saves it, and returns the score.
     """
@@ -124,7 +128,7 @@ def run_prediction_with_xai(image_path: str, temp_heatmap_path: str):
     cam_array, z_disk_probability = cam_extractor(input_batch)
     
     # 6. Generate and save the heatmap overlaying the CAM onto the PADDED image
-    generate_and_save_heatmap(cam_array, padded_rgb_image, temp_heatmap_path)
+    generate_and_save_visuals(cam_array, padded_rgb_image, temp_heatmap_path, temp_raw_jpg_path)
     
     return z_disk_probability
 
@@ -138,8 +142,10 @@ def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
     
     # Define our temp paths
     unique_id = uuid.uuid4()
-    temp_file_path = f"/tmp/{unique_id}_temp_image.tiff"
-    temp_heatmap_path = f"/tmp/{unique_id}_heatmap.jpg"
+    temp_dir = tempfile.gettempdir()
+    temp_file_path = os.path.join(temp_dir, f"{unique_id}_temp_image.tiff")
+    temp_heatmap_path = os.path.join(temp_dir, f"{unique_id}_heatmap.jpg")
+    temp_raw_jpg_path = os.path.join(temp_dir, f"{unique_id}_raw.jpg")
 
     try:
         # 1. Download original .tiff from S3
@@ -147,12 +153,14 @@ def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Image not found in S3")
 
         # 2. RUN ML & GENERATE HEATMAP
-        z_disk_probability = run_prediction_with_xai(temp_file_path, temp_heatmap_path)
+        z_disk_probability = run_prediction_with_xai(temp_file_path, temp_heatmap_path, temp_raw_jpg_path)
         
-        # 3. Upload the newly generated heatmap to S3
-        # We store it organized by project and batch, just like we discussed!
+        # 3. Upload the newly generated JPGs to S3
         heatmap_s3_key = f"projects/{request.project_id}/heatmaps/{request.batch_id}_{request.cell_line}_heatmap.jpg"
         s3_service.upload_file(temp_heatmap_path, heatmap_s3_key)
+
+        web_image_s3_key = f"projects/{request.project_id}/raw_jpgs/{request.batch_id}_{request.cell_line}_raw.jpg"
+        s3_service.upload_file(temp_raw_jpg_path, web_image_s3_key)
 
         # 4. Business Logic
         ml_outcome = "Success" if z_disk_probability >= SUCCESS_THRESHOLD else "Failure"
@@ -165,6 +173,7 @@ def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
             cell_line=request.cell_line,
             original_image_s3_key=request.original_image_s3_key,
             heatmap_image_s3_key=heatmap_s3_key, # Storing the S3 Key!
+            web_image_s3_key=web_image_s3_key,
             outcome=ml_outcome,
             confidence=confidence_score
         )
@@ -181,6 +190,8 @@ def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
             os.remove(temp_file_path)
         if os.path.exists(temp_heatmap_path):
             os.remove(temp_heatmap_path)
+        if os.path.exists(temp_raw_jpg_path):
+            os.remove(temp_raw_jpg_path)
 
 # 
 # @router.post("/predict", response_model=PredictionResponse)

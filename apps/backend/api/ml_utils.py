@@ -50,7 +50,7 @@ class ResNetGradCAM:
         return cam.cpu().numpy(), output.item()
 
 
-def generate_and_save_heatmap(cam_array, original_image_rgb, save_path):
+def generate_and_save_visuals(cam_array, original_image_rgb, heatmap_path, raw_jpg_path):
     """
     Takes the raw CAM array, resizes it, applies a color map, 
     blends it with the original cell image, and saves it to disk.
@@ -65,9 +65,12 @@ def generate_and_save_heatmap(cam_array, original_image_rgb, save_path):
     # 3. Normalize the original image to 0-255 for blending
     original_img_uint8 = np.uint8(255 * (original_image_rgb / np.max(original_image_rgb)))
     original_img_resized = cv2.resize(original_img_uint8, (224, 224))
+
+    # Save the raw biological image as a web-friendly JPG for the mobile frontend
+    cv2.imwrite(raw_jpg_path, original_img_resized)
     
     # 4. Blend the heatmap over the original image (50% opacity each)
     superimposed_img = cv2.addWeighted(original_img_resized, 0.5, heatmap, 0.5, 0)
     
     # 5. Save the final visual to disk
-    cv2.imwrite(save_path, superimposed_img)
+    cv2.imwrite(heatmap_path, superimposed_img)

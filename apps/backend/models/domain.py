@@ -47,6 +47,7 @@ class PredictionRecord(Base):
     # S3 URLs for original and heatmap images
     original_image_s3_key = Column(String(500))
     heatmap_image_s3_key = Column(String(500), nullable=True)
+    web_image_s3_key = Column(String(500), nullable=True) # JPG version of raw image
 
     outcome = Column(String(20)) # e.g., "Success" or "Failure"
     confidence = Column(Float)   # e.g., 94.5

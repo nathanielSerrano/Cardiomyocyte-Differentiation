@@ -35,6 +35,7 @@ class PredictionResponse(BaseModel):
     cell_line: str
     original_image_s3_key: str
     heatmap_image_s3_key: Optional[str]
+    web_image_s3_key: Optional[str]
     outcome: str
     confidence: float
     created_at: datetime

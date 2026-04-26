@@ -9,3 +9,7 @@ passlib
 quilt3
 pandas
 tifffile
+torch
+torchvision
+jose
+bcrypt

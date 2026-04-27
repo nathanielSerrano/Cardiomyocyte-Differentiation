@@ -39,7 +39,7 @@ export const exportPredictionToPDF = async (prediction: any) => {
         </head>
         <body>
           <div class="header">
-            <h1 class="title">CardioPredict Analysis Report</h1>
+            <h1 class="title">MyoScope Analysis Report</h1>
             <div class="subtitle">Generated on ${reportDate}</div>
           </div>
 
@@ -75,7 +75,7 @@ export const exportPredictionToPDF = async (prediction: any) => {
           </div>
 
           <div class="footer">
-            Report generated via CardioPredict Mobile App.<br/>
+            Report generated via MyoScope Mobile App.<br/>
             Original S3 Path: ${prediction.original_image_s3_key}
           </div>
         </body>

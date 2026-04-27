@@ -10,15 +10,16 @@ from sqlalchemy.ext.declarative import declarative_base
 import os
 from dotenv import load_dotenv
 
-load_dotenv('../config/.env')
+load_dotenv('./config/.env')
 
 # Default to local SQLite DB if DATABASE_URL is not set in .env
-DB_URL = os.getenv("DATABASE_URL", "sqlite:///./cardio_local.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./cardio_local.db")
 
 # SQLite needs specific flag for FastAPI's multithreading (MySQL doesn't)
-connect_args = {"check_same_thread": False} if "sqlite" in DB_URL else {}
+connect_args = {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
+print("SQLite in use" if "sqlite" in DATABASE_URL else "Using production database")
 
-engine = create_engine(DB_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

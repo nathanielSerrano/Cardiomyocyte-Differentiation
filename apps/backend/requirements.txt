@@ -13,3 +13,4 @@ torch
 torchvision
 jose
 bcrypt
+psycopg2-binary

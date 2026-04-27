@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -36,53 +36,75 @@ const { width } = Dimensions.get('window');
 function HistoryScreen({ navigation, route }: { navigation: any, route: any }) {
   const token = route.params?.token;
   const [history, setHistory] = useState<any[]>([]);
-  const [initialLoad, setInitialLoad] = useState(true); // Only show spinner on first load
+  
+  // Pagination State
+  const [initialLoad, setInitialLoad] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true); 
+
+  // We assume your limit per page is 20. Adjust this to match your backend!
+  const PAGE_LIMIT = 20;
+
+  const fetchHistory = async (pageNumber: number, isInitial = false) => {
+    if (!hasMore && !isInitial) return;
+
+    try {
+      if (!isInitial) setLoadingMore(true);
+
+      // Pass the page to your API service (you'll need to update getPredictions to accept this)
+      const predictions = await getPredictions(token, pageNumber, PAGE_LIMIT);
+      
+      if (predictions && predictions.length > 0) {
+        if (isInitial) {
+          setHistory(predictions);
+        } else {
+          // Append new data to the bottom of the list
+          setHistory(prev => [...prev, ...predictions]);
+        }
+        
+        // If the backend returns fewer items than our limit, we've hit the end of the database
+        if (predictions.length < PAGE_LIMIT) {
+          setHasMore(false);
+        }
+      } else {
+        setHasMore(false); // No data returned
+      }
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+    } finally {
+      setInitialLoad(false);
+      setLoadingMore(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
-      const fetchHistory = async () => {
-        try {
-          const predictions = await getPredictions(token);
-          
-          // Fast-map S3 keys using our memory cache
-          const historyWithUrls = await Promise.all(
-            predictions.map(async (p: any) => {
-              try {
-                const s3Key = p.heatmap_image_s3_key;
-                
-                // 1. Return instantly if we already fetched this URL recently!
-                if (urlCache.has(s3Key)) {
-                  return { ...p, heatmap_url: urlCache.get(s3Key) };
-                }
-                
-                // 2. Otherwise, fetch it and save it to the cache
-                const res = await getDownloadUrl(s3Key);
-                const finalUrl = res.url || res.download_url;
-                urlCache.set(s3Key, finalUrl);
-                
-                return { ...p, heatmap_url: finalUrl };
-              } catch (e) {
-                return p;
-              }
-            })
-          );
-
-          if (isActive) {
-            setHistory(historyWithUrls); // Removed the .reverse() since backend is already DESC
-            setInitialLoad(false);
-          }
-        } catch (error) {
-          console.error("Failed to fetch history:", error);
-          if (isActive) setInitialLoad(false);
-        }
-      };
-
-      fetchHistory();
-      return () => { isActive = false; };
+      // Reset state and fetch page 1 whenever the screen comes into focus
+      setPage(1);
+      setHasMore(true);
+      fetchHistory(1, true);
     }, [token])
   );
+
+  // Triggered by FlatList when user scrolls near the bottom
+  const handleLoadMore = () => {
+    if (!loadingMore && hasMore && !initialLoad) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchHistory(nextPage);
+    }
+  };
+
+  // Renders a spinner at the very bottom of the list while fetching the next page
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator size="small" color="#2563EB" />
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -98,25 +120,76 @@ function HistoryScreen({ navigation, route }: { navigation: any, route: any }) {
           numColumns={2}
           keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
           contentContainerStyle={{ padding: 10 }}
+          
+          // --- NEW PAGINATION PROPS ---
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5} // 0.5 means it triggers when the user is halfway down the final screen of content
+          ListFooterComponent={renderFooter}
+          // ----------------------------
+
           renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={styles.historyThumbContainer}
+            <HistoryThumb 
+              item={item} 
+              token={token}
               onPress={() => navigation.navigate('Upload Lab', { 
                 screen: 'ResultsInspector', 
                 params: { prediction: item, token: token } 
               })}
-            >
-              <Image source={{ uri: item.heatmap_url }} style={styles.historyThumb} />
-              <View style={styles.thumbOverlay}>
-                <Text style={styles.thumbText}>Batch {item.batch_id}</Text>
-                <View style={[styles.statusDot, { backgroundColor: item.outcome === 'Success' ? '#10B981' : '#EF4444' }]} />
-              </View>
-            </TouchableOpacity>
+            />
           )}
           ListEmptyComponent={<Text style={styles.emptyText}>No history available yet.</Text>}
         />
       )}
     </SafeAreaView>
+  );
+}
+// ----------------------
+// HISTORY THUMB COMPONENT
+// ----------------------
+function HistoryThumb({ item, token, onPress }: { item: any, token: string, onPress: () => void }) {
+  const s3Key = item.heatmap_image_s3_key;
+  // Initialize with cache if we have it, otherwise null
+  const [imageUrl, setImageUrl] = useState<string | null>(urlCache.get(s3Key) || null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchUrl = async () => {
+      // If we don't have it in the cache, fetch it now
+      if (!imageUrl && s3Key) {
+        try {
+          const res = await getDownloadUrl(s3Key);
+          const finalUrl = res.url || res.download_url;
+          
+          urlCache.set(s3Key, finalUrl); // Save to cache
+          
+          if (isActive) {
+            setImageUrl(finalUrl);
+          }
+        } catch (error) {
+          console.error("Failed to fetch image URL for", s3Key);
+        }
+      }
+    };
+
+    fetchUrl();
+    return () => { isActive = false; };
+  }, [s3Key]);
+
+  return (
+    <TouchableOpacity style={styles.historyThumbContainer} onPress={onPress}>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} style={styles.historyThumb} />
+      ) : (
+        <View style={[styles.historyThumb, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="small" color="#9CA3AF" />
+        </View>
+      )}
+      <View style={styles.thumbOverlay}>
+        <Text style={styles.thumbText}>Batch {item.batch_id}</Text>
+        <View style={[styles.statusDot, { backgroundColor: item.outcome === 'Success' ? '#10B981' : '#EF4444' }]} />
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -203,21 +276,8 @@ function HomeScreen({ navigation, route }: { navigation: any; route: any }) {
           const predictions = await getPredictions(token);
           
           if (predictions && predictions.length > 0) {
-            // THE FIX: The backend already sorts by newest first! Index 0 is the newest.
-            const latest = predictions[0]; 
-            const s3Key = latest.heatmap_image_s3_key;
-            let finalUrl = urlCache.get(s3Key);
-            
-            // Only hit the backend if it's not in our cache
-            if (!finalUrl) {
-                const res = await getDownloadUrl(s3Key);
-                finalUrl = res.url || res.download_url;
-                urlCache.set(s3Key, finalUrl);
-            }
-            
-            if (isActive) {
-              setRecentPrediction({ ...latest, heatmap_url: finalUrl });
-            }
+            // Set the latest prediction immediately without waiting for the image URL
+            if (isActive) setRecentPrediction(predictions[0]);
           } else {
             if (isActive) setRecentPrediction(null);
           }
@@ -239,7 +299,6 @@ function HomeScreen({ navigation, route }: { navigation: any; route: any }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hello, Researcher</Text>
             <Text style={styles.title}>MyoScope</Text>
           </View>
         </View>
@@ -272,6 +331,33 @@ function HomeScreen({ navigation, route }: { navigation: any; route: any }) {
 // PREDICTION CARD 
 // ----------------------
 function PredictionCard({ prediction }: { prediction: any }) {
+  const s3Key = prediction.heatmap_image_s3_key;
+  const [imageUrl, setImageUrl] = useState<string | null>(urlCache.get(s3Key) || null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const fetchUrl = async () => {
+      // Fetch if not in cache
+      if (!imageUrl && s3Key) {
+        try {
+          const res = await getDownloadUrl(s3Key);
+          const finalUrl = res.url || res.download_url;
+          urlCache.set(s3Key, finalUrl);
+          
+          if (isActive) {
+            setImageUrl(finalUrl);
+          }
+        } catch (error) {
+          console.error("Failed to fetch image URL for PredictionCard", error);
+        }
+      }
+    };
+
+    fetchUrl();
+    return () => { isActive = false; };
+  }, [s3Key]);
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -282,9 +368,9 @@ function PredictionCard({ prediction }: { prediction: any }) {
       <Text style={styles.cellLineText}>{prediction.cell_line}</Text>
 
       <View style={styles.imageContainer}>
-        {prediction.heatmap_url ? (
+        {imageUrl ? (
           <Image 
-            source={{ uri: prediction.heatmap_url }} 
+            source={{ uri: imageUrl }} 
             style={styles.heatmapImage}
           />
         ) : (
@@ -311,7 +397,8 @@ function PredictionCard({ prediction }: { prediction: any }) {
         style={styles.secondaryButton}
         onPress={async () => {
           try {
-            await exportPredictionToPDF(prediction);
+            // If exportPredictionToPDF requires the URL, you might need to pass it in!
+            await exportPredictionToPDF({ ...prediction, heatmap_url: imageUrl });
           } catch (e) {
             alert("Failed to create PDF report.");
           }

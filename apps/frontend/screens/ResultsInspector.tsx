@@ -119,7 +119,7 @@ export default function ResultsInspector({ navigation, route }) {
             <Text style={[styles.scoreValue, { color: isMature ? '#10B981' : '#EF4444' }]}>
               {isMature ? 'MATURE' : 'IMMATURE'}
             </Text>
-            <Text style={styles.confidenceText}>{prediction.confidence}% Confidence</Text>
+            <Text style={styles.confidenceText}>Score: {prediction.confidence}%</Text>
           </View>
 
           <View style={styles.infoRow}>

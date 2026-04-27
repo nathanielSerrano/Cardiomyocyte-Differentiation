@@ -10,7 +10,7 @@ from api.login_routes import router as login_router
 domain.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="CardioPredict API",
+    title="MyoScope API",
     description="Backend for the hiPSC-CM morphology prediction mobile app",
     version="1.0.0"
 )
@@ -29,4 +29,4 @@ app.include_router(login_router, prefix="/api/v1", tags=["Login"])
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "message": "CardioPredict API is online."}
+    return {"status": "healthy", "message": "MyoScope API is online."}

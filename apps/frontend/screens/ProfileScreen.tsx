@@ -43,7 +43,7 @@ export default function ProfileScreen({ token, onLogout }: ProfileScreenProps) {
     try {
       const [userProfile, predictions, storedName] = await Promise.all([
         getUserInfo(token),
-        getPredictions(token, 1000),
+        getPredictions(token, 100),
         AsyncStorage.getItem('@display_name')
       ]);
       setProfile(userProfile);

@@ -94,8 +94,9 @@ export async function getDownloadUrl(s3Key: string) {
  * Fetches the recent predictions for the logged-in user.
  * Maps to: GET /predictions
  */
-export const getPredictions = async (token: string, limit: number = 10) => {
-  const response = await fetch(`${BASE_URL}/predictions?limit=${limit}`, {
+ export const getPredictions = async (token: string, page: number = 1, limit: number = 20) => {
+  // Pass both the page and the limit to your FastAPI backend
+  const response = await fetch(`${BASE_URL}/predictions?page=${page}&limit=${limit}`, {
     method: 'GET',
     headers: { 
       'Content-Type': 'application/json',

@@ -13,7 +13,8 @@ user_project_association = Table(
     "user_project_association",
     Base.metadata,
     Column("user_id", Integer, ForeignKey("login_records.id"), primary_key=True),
-    Column("project_id", Integer, ForeignKey("projects.id"), primary_key=True)
+    # Added index=True here. Without this, finding all members of a specific project requires a full table scan.
+    Column("project_id", Integer, ForeignKey("projects.id"), primary_key=True, index=True)
 )
 
 class Project(Base):
@@ -41,7 +42,7 @@ class PredictionRecord(Base):
     __tablename__ = "predictions"
 
     id = Column(Integer, primary_key=True, index=True)
-    batch_id = Column(String(50), index=True)  # Specific batch within a project (optional grouping)
+    batch_id = Column(String(50), index=True)  # Good call having this indexed already!
     cell_line = Column(String(100))
 
     # S3 URLs for original and heatmap images
@@ -55,11 +56,12 @@ class PredictionRecord(Base):
     # Timestamp
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    project_id = Column(Integer, ForeignKey("projects.id"))
+    # Added index=True to both Foreign Keys below
+    project_id = Column(Integer, ForeignKey("projects.id"), index=True)
     project = relationship("Project", back_populates="predictions")
 
     # Link to the user who uploaded/owns this specific record
-    owner_id = Column(Integer, ForeignKey("login_records.id"))
+    owner_id = Column(Integer, ForeignKey("login_records.id"), index=True)
 
 class LoginRecord(Base):
     """

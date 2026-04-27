@@ -90,54 +90,88 @@ import tifffile as tiff
 def run_prediction_with_xai(image_path: str, temp_heatmap_path: str, temp_raw_jpg_path: str):
     """
     Runs inference, generates the XAI heatmap, saves it, and returns the score.
+    Maintains 1:1 symmetry with the High-Recall training preprocessing (Brute-Force Resize).
     """
+    # Enforce evaluation mode on the model explicitly
+    model.eval()
+    
     image_array = tiff.imread(image_path)
     
-    # 1. Extract Channel 1 and Mathematically Normalize to [0.0, 1.0]
+    # Extract alpha-actinin-2 (Channel 1) and duplicate to RGB
     single_channel = image_array[1].astype(np.float32)
-    min_val = np.min(single_channel)
-    max_val = np.max(single_channel)
-    
-    # Prevent divide-by-zero on completely black images
-    if max_val > min_val:
-        single_channel = (single_channel - min_val) / (max_val - min_val)
-        
     rgb_image = np.stack((single_channel,) * 3, axis=-1)
     
-    # 2. Convert to Tensor FIRST [Channels, Height, Width]
+    # 1. Convert to Tensor FIRST [Channels, Height, Width]
     image_tensor = torch.tensor(rgb_image).permute(2, 0, 1)
     
-    # 3. ASPECT RATIO PRESERVING RESIZE
-    _, h, w = image_tensor.shape
-    max_dim = max(h, w)
-    scale = 224.0 / max_dim
-    new_h = int(h * scale)
-    new_w = int(w * scale)
+    # 2. THE FIX: Robust Percentile Scaling (Immune to dust/hot pixels)
+    tensor_flat = image_tensor.reshape(-1)
+    tensor_min = torch.quantile(tensor_flat, 0.01)
+    tensor_max = torch.quantile(tensor_flat, 0.99)
     
-    image_tensor = TF.resize(image_tensor, [new_h, new_w], antialias=True)
+    # Scale and clamp anything outside those bounds to strictly 0.0 or 1.0
+    image_tensor = torch.clamp((image_tensor - tensor_min) / (tensor_max - tensor_min + 1e-8), 0.0, 1.0)
     
-    pad_top = (224 - new_h) // 2
-    pad_bottom = 224 - new_h - pad_top
-    pad_left = (224 - new_w) // 2
-    pad_right = 224 - new_w - pad_left
+    # 3. BRUTE-FORCE RESIZE (No more padding!)
+    # This forces the CNN to look at the interior biology, destroying artificial border edges.
+    image_tensor = TF.resize(image_tensor, [224, 224], antialias=True)
     
-    padded_tensor = F.pad(image_tensor, (pad_left, pad_right, pad_top, pad_bottom), value=0)
-    
-    # 4. Save a standard uint8 [0-255] NumPy copy for OpenCV to perfectly draw the heatmap
-    padded_rgb_image = (padded_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+    # 4. Save a clean NumPy copy specifically for perfectly aligned XAI heatmaps
+    resized_rgb_image = image_tensor.permute(1, 2, 0).numpy()
     
     # 5. Normalize the tensor for the ResNet model
-    normalized_tensor = TF.normalize(padded_tensor, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    normalized_tensor = TF.normalize(image_tensor, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     
     input_batch = normalized_tensor.unsqueeze(0).to(device)
     
     # 6. Run the image through our GradCAM extractor
     cam_array, z_disk_probability = cam_extractor(input_batch)
     
-    # 7. Generate and save the heatmap
-    generate_and_save_visuals(cam_array, padded_rgb_image, temp_heatmap_path, temp_raw_jpg_path)
+    # --- XAI NOISE SUPPRESSION ---
+    # Convert cam_array to a PyTorch tensor if it's a numpy array from the extractor
+    if isinstance(cam_array, np.ndarray):
+        cam_array = torch.from_numpy(cam_array)
+        
+    cam_array = torch.relu(cam_array)
+    cam_min, cam_max = cam_array.min(), cam_array.max()
     
-    return z_disk_probability
+    # If the max gradient is tiny, the cell is a massive failure.
+    if cam_max > 0.05: 
+        cam_array = (cam_array - cam_min) / cam_max
+    else:
+        cam_array = cam_array * 0 
+        
+    cam_numpy = cam_array.cpu().detach().numpy()
+    
+    # --- RESIZE CAM TO MATCH IMAGE ---
+    # ResNet outputs a tiny 7x7 spatial map. We MUST resize it to 224x224 BEFORE masking!
+    cam_numpy = cv2.resize(cam_numpy, (224, 224))
+    
+    # --- THE SILHOUETTE MASK FIX ---
+    # Grad-CAM generates a tiny 7x7 grid that gets blown up to 224x224.
+    # When a valid biological feature touches the edge of the cell, 
+    # the interpolation smears the red heatmap heavily into the black background.
+    # We fix this by physically masking the heatmap to the cell's footprint.
+    
+    # 1. Create a binary mask of where the cell actually exists (ignoring pure black)
+    grayscale = resized_rgb_image.mean(axis=-1)
+    cell_mask = (grayscale > 0.05).astype(np.float32)
+    
+    # 2. Smooth the mask slightly to prevent harsh, pixelated cutoff edges
+    cell_mask = cv2.GaussianBlur(cell_mask, (15, 15), 0)
+    
+    # 3. Apply the mask to the heatmap array
+    cam_numpy = cam_numpy * cell_mask
+    
+    # 7. Generate and save the heatmap overlay
+    generate_and_save_visuals(cam_numpy, resized_rgb_image, temp_heatmap_path, temp_raw_jpg_path)
+    
+    # Ensure we return a standard python float
+    if isinstance(z_disk_probability, torch.Tensor):
+        return z_disk_probability.item()
+    return float(z_disk_probability)
+
+
 
 
 
@@ -201,77 +235,32 @@ def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
         if os.path.exists(temp_raw_jpg_path):
             os.remove(temp_raw_jpg_path)
 
-# 
-# @router.post("/predict", response_model=PredictionResponse)
-# def create_prediction(request: PredictionCreate, db: Session = Depends(get_db)):
-#     """
-#     Receives the S3 image key from the app, downloads it temporarily,
-#     runs the PyTorch model, cleans up, and saves the result to the DB.
-#     """
-#     s3_service = S3Service(BUCKET_NAME)
-    
-#     # 1. Create a completely unique temporary file path
-#     temp_file_path = f"/tmp/{uuid.uuid4()}_temp_image.jpg"
-
-#     try:
-#         # Validate that the image exists in S3
-#         if not s3_service.download_file(request.original_image_s3_key, temp_file_path):
-#             raise HTTPException(status_code=400, detail="Image not found in S3")
-
-#         # ---------------------------------------------------------
-#         # MOCK ML PREDICTION
-#         # ---------------------------------------------------------
-#         ml_outcome = random.choice(["Success", "Failure"])
-#         confidence_score = round(random.uniform(80.0, 99.9), 2)
-        
-#         # 2. Define a clean S3 key that utilizes the project_id for better organization
-#         heatmap_key = f"projects/{request.project_id}/heatmaps/{request.batch_id}_{request.cell_line}_heatmap.jpg"
-        
-#         # 3. Upload the file using the clean key
-#         s3_service.upload_file(temp_file_path, heatmap_key)
-
-#         # 4. Save to DB using strictly the keys
-#         db_record = PredictionRecord(
-#             project_id=request.project_id,           # <-- Added Project ID
-#             batch_id=request.batch_id,
-#             cell_line=request.cell_line,
-#             original_image_s3_key=request.original_image_s3_key,
-#             heatmap_image_s3_key=heatmap_key,        # <-- Storing just the key!
-#             outcome=ml_outcome,
-#             confidence=confidence_score
-#         )
-
-#         db.add(db_record)
-#         db.commit()
-#         db.refresh(db_record)
-
-#         return db_record
-
-#     finally:
-#         # 5. Best Practice: Always ensure the temp file is deleted, even if the DB commit fails
-#         if os.path.exists(temp_file_path):
-#             os.remove(temp_file_path)
-
 
 @router.get("/predictions", response_model=List[PredictionResponse])
-def get_recent_predictions(current_user: LoginRecord = Depends(get_current_user), limit: int = 10, db: Session = Depends(get_db)):
+def get_recent_predictions(
+    current_user: LoginRecord = Depends(get_current_user), 
+    page: int = 1,    # <-- Add page parameter
+    limit: int = 20, 
+    db: Session = Depends(get_db)
+):
     """
-    Retrieves the most recent predictions from the DB to populate the dashboard.
+    Retrieves the most recent predictions from the DB with pagination for infinite scrolling.
     """
-    records = db.query(PredictionRecord).filter(PredictionRecord.project_id == current_user.projects[0].id
-                                                ).order_by(PredictionRecord.created_at.desc()).limit(limit).all()
-    return records
+    # Calculate how many records to skip based on the current page
+    # Page 1: (1 - 1) * 20 = 0 skipped
+    # Page 2: (2 - 1) * 20 = 20 skipped
+    skip = (page - 1) * limit
 
-@router.get("/user-info")
-def get_user_info(current_user: LoginRecord = Depends(get_current_user)):
-    """
-    A simple route to return the logged-in user's information and their associated projects.
-    Useful for debugging and ensuring our authentication system is working correctly.
-    """
-    return {
-        "user": current_user.user,
-        "projects": [{"id": p.id, "name": p.name} for p in current_user.projects]
-    }
+    records = (
+        db.query(PredictionRecord)
+        .filter(PredictionRecord.project_id == current_user.projects[0].id)
+        .order_by(PredictionRecord.created_at.desc())
+        .offset(skip)     # <-- Tell SQLAlchemy to skip the previous pages
+        .limit(limit)     # <-- Grab the next 'limit' amount of records
+        .all()
+    )
+    
+    return records
 
 
 @router.get("/upload-url", response_model=dict)

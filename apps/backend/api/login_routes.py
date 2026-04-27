@@ -131,6 +131,17 @@ def login(item: UserLogin, db: Session = Depends(get_db)):
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+@router.get("/user-info")
+def get_user_info(current_user: LoginRecord = Depends(get_current_user)):
+    """
+    A simple route to return the logged-in user's information and their associated projects.
+    Useful for debugging and ensuring our authentication system is working correctly.
+    """
+    return {
+        "user": current_user.user,
+        "projects": [{"id": p.id, "name": p.name} for p in current_user.projects]
+    }
+
 # Example of a protected route
 @router.get('/my-research-batches')
 def get_user_batches(current_user: LoginRecord = Depends(get_current_user)):
